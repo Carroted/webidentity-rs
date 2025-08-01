@@ -58,23 +58,14 @@ pub fn verify_request(
     let canonical_string =
         build_canonical_string(http_method, host, path, &body_hash, location, timestamp_str);
 
-    let public_key = VerifyingKey::from_bytes(
-        as_array::<u8, 32>(public_key_bytes).ok_or(SignatureError::SignatureMismatch)?,
+    let signature_bytes =
+        hex::decode(signature_hex).map_err(|_| SignatureError::SignatureMismatch)?;
+
+    verify_signature(
+        public_key_bytes,
+        canonical_string.as_bytes(),
+        &signature_bytes,
     )
-    .map_err(|_| SignatureError::SignatureMismatch)?;
-
-    let realer = hex::decode(signature_hex).map_err(|_| SignatureError::SignatureMismatch)?;
-    let signature_bytes = as_array::<u8, 64>(&realer).ok_or(SignatureError::SignatureMismatch)?;
-    let signature = Signature::from_bytes(&signature_bytes);
-
-    if public_key
-        .verify(canonical_string.as_bytes(), &signature)
-        .is_ok()
-    {
-        Ok(())
-    } else {
-        Err(SignatureError::SignatureMismatch.into())
-    }
 }
 
 // This is taken from rust std, since it is still unstable library feature, but is useful here
@@ -118,6 +109,36 @@ pub fn create_signed_headers(
     headers.insert("WebIdentity-Signature".to_string(), signature_hex);
 
     Ok(headers)
+}
+
+/// Helper function to sign with `ed25519-dalek`
+pub fn sign_bytes(signing_key: &[u8], bytes: &[u8]) -> Result<[u8; 64], WebIdentityError> {
+    let signing_key = SigningKey::from_bytes(
+        as_array::<u8, 32>(signing_key).ok_or(SignatureError::SignatureMismatch)?,
+    );
+    let signature = signing_key.sign(bytes);
+    Ok(signature.to_bytes())
+}
+
+/// Helper function to verify a signature with `ed25519-dalek`
+pub fn verify_signature(
+    public_key: &[u8],
+    original_bytes: &[u8],
+    signature: &[u8],
+) -> Result<(), WebIdentityError> {
+    let public_key = VerifyingKey::from_bytes(
+        as_array::<u8, 32>(public_key).ok_or(SignatureError::SignatureMismatch)?,
+    )
+    .map_err(|_| SignatureError::SignatureMismatch)?;
+
+    let signature_bytes = as_array::<u8, 64>(signature).ok_or(SignatureError::SignatureMismatch)?;
+    let signature = Signature::from_bytes(&signature_bytes);
+
+    if public_key.verify(original_bytes, &signature).is_ok() {
+        Ok(())
+    } else {
+        Err(SignatureError::SignatureMismatch.into())
+    }
 }
 
 fn hash_body(body: &[u8]) -> String {

@@ -13,3 +13,4 @@ pub use error::WebIdentityError;
 pub use identity::{get_identity, Identity};
 pub use resolve::resolve_location_url;
 pub use sign::{create_signed_headers, verify_request, HeaderProvider, SimpleHeaderProvider};
+pub use sign::{sign_bytes, verify_signature};
